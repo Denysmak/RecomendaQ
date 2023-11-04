@@ -5,7 +5,7 @@ import plotly.express as px
 import functions
 
 
-dataset = 'Marvel_Comics.parquet'
+dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
 
 

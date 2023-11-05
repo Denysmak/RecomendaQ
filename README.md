@@ -1,5 +1,6 @@
-# PISI3 - BSI - UFRPE
+# RecomendaQs
 por: Carlos Vinicios, Denys Makene, Leandro Cesar, Leon Lourenço, Vithória Camila
+
 {carlos.vinicios, denys.makene, leandro.scesar, leon.santos, vithoria.bastos}@ufrpe.br
 
 

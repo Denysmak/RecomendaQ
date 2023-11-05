@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-dataset = 'Marvel_Comics.parquet'
+dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
 
 num_columns = df.select_dtypes(exclude='object').columns

@@ -35,7 +35,8 @@ Este sistema foi desenvolvido pelo grupo 4, para a disciplina de Projeto Interdi
 
 ## Informações Adicionais:
 
-Este projeto tem 1 branch:
+Este projeto tem 2 branchs:
 <ol>
-  <li>main: código com várias funcionalidades diferentes: sidebar, pandas, arquivos parquet, ydata-profile, etc.</li>
+  <li>main: código com o dashboard atual, usando pandas, matplot, sidebar e arquivos parquet</li>
+  <li>Marco_1: criado com o propósito de separar uma entrega da branch principal, que vai ser constantemente alterada.</li>
 </ol>

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-dataset = 'Marvel_Comics.parquet'
+dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
 
 num_columns = df.select_dtypes(exclude='object').columns
@@ -32,19 +32,11 @@ else:
             fig = px.histogram(df_1, color=cat_col, x=target_column)
         st.plotly_chart(fig, use_container_width=True)
 
-    if high_cardi_columns:
-        if len(high_cardi_columns) == 1:
-                st.subheader('A seguinte coluna tem alta cardinalidade, por isso o gráfico de caixa não foi plotado:')
-        else:
-                st.subheader('As seguintes colunas têm alta cardinalidade, por isso os gráficos de caixa não foram plotados:')
-        for high_cardi_col in high_cardi_columns:
-                st.write(high_cardi_col)
+if high_cardi_columns:
+    if len(high_cardi_columns) == 1:
+        st.subheader('A seguinte coluna tem alta cardinalidade')
 
-        st.write('<p style="font-size:140%">Deseja plotar mesmo assim?</p>', unsafe_allow_html=True)
-        answer = st.selectbox("", ('Não', 'Sim'))
-
-        if answer == 'Sim':
-            for high_cardi_col in high_cardi_columns:
-                fig = px.box(df_1, y=target_column, color=high_cardi_col)
-                st.plotly_chart(fig, use_container_width=True)
+    for high_cardi_col in high_cardi_columns:
+        fig = px.box(df_1, y=target_column, color=high_cardi_col)
+        st.plotly_chart(fig, use_container_width=True)
                 

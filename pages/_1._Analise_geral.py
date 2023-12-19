@@ -40,6 +40,11 @@ else:
             fig = px.histogram(df, x=num_col)
             st.plotly_chart(fig, use_container_width=True)
 
+
+df['Price'] = df['Price'].str.replace('Free', '0.00')
+df['Price'] = df['Price'].str.replace('$', '').astype(float)
+df = df[df['Price'] <= 50.0]
+
 st.subheader('Gráficos de Contagem de Colunas Categóricas:')
 if len(cat_columns) == 0:
         st.write('Não há colunas categóricas nos dados.')

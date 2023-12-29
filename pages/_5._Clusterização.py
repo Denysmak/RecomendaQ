@@ -10,9 +10,9 @@ import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.cluster import DBSCAN
 
+
 dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
-
 
 df['Price'] = df['Price'].str.replace('Free', '0.00')
 df['Price'] = df['Price'].str.replace('$', '').astype(float)
@@ -63,7 +63,7 @@ def create_dfs():
         'df_clusters': (df_clusters, 'Clusterização do Dataframe Codificado e com Normalizações', 'Dataframe após a execução de diferentes normalizações'),
     }
     
-def create_df_raw(cols: list[str]):
+def create_df_raw(cols):
     df_raw = df[cols].copy()
     return df_raw
 
@@ -101,15 +101,45 @@ def plot_dataframe(df, title, desc):
         c2.write('<h3>Descrição</h3>', unsafe_allow_html=True)
         c2.dataframe(df.describe())
 
-def plot_cluster(df:pd.DataFrame, cluster_col:str, cluster_name:str):
+def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
     df_cluster_desc = df[[cluster_col]].copy().groupby(by=cluster_col).size()
     expander = st.expander(cluster_name)
     expander.dataframe(df_cluster_desc)
     cols = expander.columns(len(clustering_cols))
-    for c1 in clustering_cols:
-        for cidx, c2 in enumerate(clustering_cols):
-            fig = px.scatter(df, x=c1, y=c2, color=cluster_col, color_discrete_sequence=color_scale)
-            cols[cidx].plotly_chart(fig, use_container_width=True)
+
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
+                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                 '#3EB665', '#72D1CD', '#D42156', '#672403']
+
+    # Mapeamento de rótulos de cluster para cores específicas
+    cluster_labels = df[cluster_col].unique()
+    num_clusters = len(cluster_labels)
+    custom_colors_cluster = custom_colors[:num_clusters]
+    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+
+    # Gerando uma lista de cores fixas para os clusters
+    fixed_colors = [cluster_colors[label] for label in df[cluster_col]]
+
+    # Adicionando o trace para cada cluster com uma cor específica
+    fig = go.Figure()
+    for label, color in cluster_colors.items():
+        cluster_data = df[df[cluster_col] == label]
+        fig.add_trace(go.Scatter(
+            x=cluster_data[clustering_cols[0]],
+            y=cluster_data[clustering_cols[1]],
+            mode='markers',
+            marker=dict(color=color),
+            name=f'Cluster {label}'
+        ))
+
+    fig.update_layout(
+        xaxis_title=clustering_cols[0],
+        yaxis_title=clustering_cols[1],
+        showlegend=True
+    )
+
+    for cidx, _ in enumerate(clustering_cols):
+        cols[cidx].plotly_chart(fig, use_container_width=True)
 
 
 def build_header():
@@ -144,6 +174,10 @@ def build_body_dbscan(key):
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
 
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
+                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                 '#3EB665', '#72D1CD', '#D42156', '#672403']
+    
     eps_value = c2.slider(f'Valor de Eps (DBSCAN) {key}', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
     min_samples_value = st.slider(f'Número Mínimo de Amostras (DBSCAN) {key}', min_value=2, max_value=20, value=5)
 
@@ -156,7 +190,28 @@ def build_body_dbscan(key):
     rotulos = dbscan_marvel.labels_
     selected_columns_imputed['Cluster'] = rotulos
 
-    fig = px.scatter(selected_columns_imputed, x=clustering_cols[0], y=clustering_cols[1], color='Cluster')
+    cluster_labels = np.unique(rotulos)
+    num_clusters = len(cluster_labels)
+    custom_colors_cluster = custom_colors[:num_clusters]
+    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+
+    fig = go.Figure()
+    for label, color in cluster_colors.items():
+        cluster_data = selected_columns_imputed[selected_columns_imputed['Cluster'] == label]
+        fig.add_trace(go.Scatter(
+            x=cluster_data[clustering_cols[0]],
+            y=cluster_data[clustering_cols[1]],
+            mode='markers',
+            marker=dict(color=color),
+            name=f'Cluster {label}'
+        ))
+
+    fig.update_layout(
+        xaxis_title=clustering_cols[0],
+        yaxis_title=clustering_cols[1],
+        showlegend=True
+    )
+
     st.plotly_chart(fig)
 
 

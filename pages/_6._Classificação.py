@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.tree import DecisionTreeClassifier  # Adicionado o import para DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
@@ -173,6 +174,13 @@ def train_gradient_boosting(X_train_scaled, y_train, X_test_scaled):
     predictions = model.predict(X_test_scaled)
 
     return predictions
+
+def train_decision_tree(X_train_scaled, y_train, X_test_scaled):
+    model = DecisionTreeClassifier()
+    model.fit(X_train_scaled, y_train)
+    predictions = model.predict(X_test_scaled)
+
+    return predictions
     
 def display_metrics(model_name, y_test, predictions):
     accuracy = accuracy_score(y_test, predictions)
@@ -244,6 +252,11 @@ def main():
             # Treinamento e avaliação do modelo Gradient Boosting
             gb_predictions = train_gradient_boosting(X_train_scaled, y_train, X_test_scaled)
             display_metrics('Gradient Boosting', y_test, gb_predictions)
+
+            #treinamento e avaliação do modelo decision tree classifier
+            dt_predictions = train_decision_tree(X_train_scaled, y_train, X_test_scaled)
+            display_metrics('Decision Tree Classifier', y_test, dt_predictions)
+
 
 if __name__ == '__main__':
     main()

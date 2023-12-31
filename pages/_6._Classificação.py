@@ -1,11 +1,12 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.tree import DecisionTreeClassifier  # Adicionado o import para DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier  
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
 def load_data(dataset_path):
@@ -189,19 +190,33 @@ def display_metrics(model_name, y_test, predictions):
     f1 = f1_score(y_test, predictions, average='weighted', zero_division=1)
 
     st.write(f'Métricas para {model_name}:')
-    st.write(f'Acurácia: {accuracy}')
-    st.write(f'Precisão: {precision}')
-    st.write(f'Revocação: {recall}')
-    st.write(f'F1-Score: {f1}')
-    st.write('\n')
-
-    # Gráfico de barras para métricas
-    metrics_df = pd.DataFrame({
+    st.table(pd.DataFrame({
         'Métrica': ['Acurácia', 'Precisão', 'Revocação', 'F1-Score'],
         'Valor': [accuracy, precision, recall, f1]
+    }))
+    st.write('\n')
+
+    # Matriz de Confusão
+    st.subheader('Matriz de Confusão:')
+    cm = confusion_matrix(y_test, predictions)
+    
+    # Labels
+    labels = ['Negativo', 'Positivo']
+
+    # Submatrizes para diferentes categorias
+    true_negative = cm[0, 0]
+    false_positive = cm[0, 1]
+    false_negative = cm[1, 0]
+    true_positive = cm[1, 1]
+
+    # Exibir a matriz de confusão em formato de tabela
+    conf_matrix_df = pd.DataFrame({
+        '': ['Negativo (Real)', 'Positivo (Real)'],
+        'Negativo (Predito)': [true_negative, false_positive],
+        'Positivo (Predito)': [false_negative, true_positive]
     })
 
-    st.bar_chart(metrics_df.set_index('Métrica'))
+    st.table(conf_matrix_df)
 
 def main():
     st.title("Classificação com Modelos de Machine Learning")
@@ -247,16 +262,33 @@ def main():
 
             # Treinamento e avaliação do modelo Random Forest
             rf_predictions = train_random_forest(X_train_scaled, y_train, X_test_scaled)
+            st.subheader("Random Forest")
             display_metrics('Random Forest', y_test, rf_predictions)
 
             # Treinamento e avaliação do modelo Gradient Boosting
             gb_predictions = train_gradient_boosting(X_train_scaled, y_train, X_test_scaled)
+            st.subheader("Gradient Boosting")
             display_metrics('Gradient Boosting', y_test, gb_predictions)
 
-            #treinamento e avaliação do modelo decision tree classifier
+            # Treinamento e avaliação do modelo Decision Tree Classifier
             dt_predictions = train_decision_tree(X_train_scaled, y_train, X_test_scaled)
+            st.subheader("Decision Tree Classifier")
             display_metrics('Decision Tree Classifier', y_test, dt_predictions)
 
+            # Comparação dos modelos com tabela
+            st.subheader("Comparação dos Modelos")
+            metrics_df = pd.DataFrame({
+                'Métrica': ['Acurácia', 'Precisão', 'Revocação', 'F1-Score'],
+                'Random Forest': [accuracy_score(y_test, rf_predictions), precision_score(y_test, rf_predictions, average='weighted', zero_division=1),
+                                  recall_score(y_test, rf_predictions, average='weighted', zero_division=1), f1_score(y_test, rf_predictions, average='weighted', zero_division=1)],
+                'Gradient Boosting': [accuracy_score(y_test, gb_predictions), precision_score(y_test, gb_predictions, average='weighted', zero_division=1),
+                                      recall_score(y_test, gb_predictions, average='weighted', zero_division=1), f1_score(y_test, gb_predictions, average='weighted', zero_division=1)],
+                'Decision Tree Classifier': [accuracy_score(y_test, dt_predictions), precision_score(y_test, dt_predictions, average='weighted', zero_division=1),
+                                             recall_score(y_test, dt_predictions, average='weighted', zero_division=1), f1_score(y_test, dt_predictions, average='weighted', zero_division=1)]
+            })
+
+            st.table(metrics_df.set_index('Métrica'))
 
 if __name__ == '__main__':
     main()
+    

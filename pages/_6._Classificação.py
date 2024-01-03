@@ -1,13 +1,14 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier  
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
 import streamlit as st
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix
 import seaborn as sns
+import plotly.express as px  
 
 def load_data(dataset_path):
     dados = pd.read_parquet(dataset_path)
@@ -141,6 +142,17 @@ def map_imprints(df):
     df['Imprint'].fillna(-1, inplace=True)
     return df
 
+def plot_feature_importance(model, feature_names):
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+
+    plt.figure(figsize=(10, 6))
+    plt.title("Feature Importances")
+    plt.bar(range(len(indices)), importances[indices], align="center")
+    plt.xticks(range(len(indices)), feature_names[indices])
+    plt.tight_layout()
+    st.pyplot(plt)
+
 def split_data(df, selected_x, selected_y):
     selected_columns = selected_x + [selected_y]
     
@@ -162,26 +174,26 @@ def scale_data(X_train, X_test):
 
     return X_train_scaled, X_test_scaled
 
-def train_random_forest(X_train_scaled, y_train, X_test_scaled):
-    model = RandomForestClassifier(n_estimators=200)
+def train_random_forest(X_train, X_train_scaled, y_train, X_test_scaled, n_estimators=200, max_depth=None, min_samples_split=2, min_samples_leaf=1):
+    model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
     model.fit(X_train_scaled, y_train)
     predictions = model.predict(X_test_scaled)
 
-    return predictions
+    return model, predictions
 
-def train_gradient_boosting(X_train_scaled, y_train, X_test_scaled):
-    model = GradientBoostingClassifier(learning_rate=0.2, n_estimators=200)
+def train_gradient_boosting(X_train, X_train_scaled, y_train, X_test_scaled, n_estimators=200, learning_rate=0.2, max_depth=3, min_samples_split=2, min_samples_leaf=1):
+    model = GradientBoostingClassifier(learning_rate=learning_rate, n_estimators=n_estimators, max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
     model.fit(X_train_scaled, y_train)
     predictions = model.predict(X_test_scaled)
 
-    return predictions
+    return model, predictions
 
-def train_decision_tree(X_train_scaled, y_train, X_test_scaled):
-    model = DecisionTreeClassifier()
+def train_decision_tree(X_train, X_train_scaled, y_train, X_test_scaled, max_depth=None, min_samples_split=2, min_samples_leaf=1):
+    model = DecisionTreeClassifier(max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
     model.fit(X_train_scaled, y_train)
     predictions = model.predict(X_test_scaled)
 
-    return predictions
+    return model, predictions
     
 def display_metrics(model_name, y_test, predictions):
     accuracy = accuracy_score(y_test, predictions)
@@ -195,28 +207,6 @@ def display_metrics(model_name, y_test, predictions):
         'Valor': [accuracy, precision, recall, f1]
     }))
     st.write('\n')
-
-    # Matriz de Confusão
-    st.subheader('Matriz de Confusão:')
-    cm = confusion_matrix(y_test, predictions)
-    
-    # Labels
-    labels = ['Negativo', 'Positivo']
-
-    # Submatrizes para diferentes categorias
-    true_negative = cm[0, 0]
-    false_positive = cm[0, 1]
-    false_negative = cm[1, 0]
-    true_positive = cm[1, 1]
-
-    # Exibir a matriz de confusão em formato de tabela
-    conf_matrix_df = pd.DataFrame({
-        '': ['Negativo (Real)', 'Positivo (Real)'],
-        'Negativo (Predito)': [true_negative, false_positive],
-        'Positivo (Predito)': [false_negative, true_positive]
-    })
-
-    st.table(conf_matrix_df)
 
 def main():
     st.title("Classificação com Modelos de Machine Learning")
@@ -232,8 +222,6 @@ def main():
     df = map_formats(df)
     df = map_imprints(df)
 
-    st.sidebar.header("Configurações")
-    
     # Removendo colunas desnecessárias
     df = df.drop(columns=['active_years'])
     df = df.drop(columns=['publish_date'])
@@ -242,16 +230,28 @@ def main():
     # Removendo linhas com valores ausentes
     df.dropna(subset=['final_year', 'Price', 'publish_year', 'publish_month', 'publish_day', 'Rating_Age', 'Imprint', 'Format'], inplace=True)
 
+    st.header("Configurações")
+    
     # Escolhendo a variável Y
-    selected_y = st.sidebar.selectbox("Escolha a coluna alvo", ['Rating_Age', 'Format', 'Imprint'])
+    selected_y = st.selectbox("Escolha a coluna alvo", ['Rating_Age', 'Format', 'Imprint'])
 
     # Excluindo a variável Y da lista de opções para X
     available_x = [col for col in df.columns if col != selected_y]
 
     # Escolhendo as variáveis X
-    selected_x = st.sidebar.multiselect("Escolha as características", available_x)
+    selected_x = st.multiselect("Escolha as características", available_x)
 
-    if st.sidebar.button("Executar Modelos"):
+    # Adicione controles deslizantes para ajustar os hiperparâmetros
+    n_estimators = st.slider("Número de Estimadores (Random Forest e Gradient Boosting)", 10, 500, 200, 10)
+    max_depth = st.slider("Profundidade Máxima (Random Forest e Gradient Boosting)", 1, 20, 10, 1)
+    min_samples_split = st.slider("Número Mínimo de Amostras para Dividir (Random Forest e Gradient Boosting)", 2, 20, 2, 1)
+    min_samples_leaf = st.slider("Número Mínimo de Amostras em Folha (Random Forest e Gradient Boosting)", 1, 20, 1, 1)
+    learning_rate = st.slider("Taxa de Aprendizado (Gradient Boosting)", 0.01, 1.0, 0.2, 0.01)
+    max_depth_dt = st.slider("Profundidade Máxima (Decision Tree Classifier)", 1, 20, 10, 1)
+    min_samples_split_dt = st.slider("Número Mínimo de Amostras para Dividir (Decision Tree Classifier)", 2, 20, 2, 1)
+    min_samples_leaf_dt = st.slider("Número Mínimo de Amostras em Folha (Decision Tree Classifier)", 1, 20, 1, 1)
+
+    if st.button("Executar Modelos"):
         st.header("Resultados")
 
         # Divisão e escalonamento dos dados
@@ -260,35 +260,62 @@ def main():
             # Escalonando os dados
             X_train_scaled, X_test_scaled = scale_data(X_train, X_test)
 
-            # Treinamento e avaliação do modelo Random Forest
-            rf_predictions = train_random_forest(X_train_scaled, y_train, X_test_scaled)
+            # Treinamento do modelo Random Forest
+            rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
+            rf_model.fit(X_train_scaled, y_train)
+
+            # Avaliação do modelo Random Forest
+            rf_predictions = rf_model.predict(X_test_scaled)
+
             st.subheader("Random Forest")
             display_metrics('Random Forest', y_test, rf_predictions)
 
-            # Treinamento e avaliação do modelo Gradient Boosting
-            gb_predictions = train_gradient_boosting(X_train_scaled, y_train, X_test_scaled)
+            # Adiciona o gráfico de feature importance após a tabela de métricas para o Random Forest
+            st.subheader("Feature Importance - Random Forest")
+            plot_feature_importance(rf_model, X_train.columns)
+
+            # Treinamento do modelo Gradient Boosting
+            gb_model = GradientBoostingClassifier(learning_rate=learning_rate, n_estimators=n_estimators, max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
+            gb_model.fit(X_train_scaled, y_train)
+
+            # Avaliação do modelo Gradient Boosting
+            gb_predictions = gb_model.predict(X_test_scaled)
+
             st.subheader("Gradient Boosting")
             display_metrics('Gradient Boosting', y_test, gb_predictions)
 
-            # Treinamento e avaliação do modelo Decision Tree Classifier
-            dt_predictions = train_decision_tree(X_train_scaled, y_train, X_test_scaled)
+            # Adiciona o gráfico de feature importance após a tabela de métricas para o Gradient Boosting
+            st.subheader("Feature Importance - Gradient Boosting")
+            plot_feature_importance(gb_model, X_train.columns)
+
+            # Treinamento do modelo Decision Tree Classifier
+            dt_model = DecisionTreeClassifier(max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
+            dt_model.fit(X_train_scaled, y_train)
+
+            # Avaliação do modelo Decision Tree Classifier
+            dt_predictions = dt_model.predict(X_test_scaled)
+
             st.subheader("Decision Tree Classifier")
             display_metrics('Decision Tree Classifier', y_test, dt_predictions)
+
+            # Adiciona o gráfico de feature importance após a tabela de métricas para o Decision Tree Classifier
+            st.subheader("Feature Importance - Decision Tree Classifier")
+            plot_feature_importance(dt_model, X_train.columns)
 
             # Comparação dos modelos com tabela
             st.subheader("Comparação dos Modelos")
             metrics_df = pd.DataFrame({
                 'Métrica': ['Acurácia', 'Precisão', 'Revocação', 'F1-Score'],
                 'Random Forest': [accuracy_score(y_test, rf_predictions), precision_score(y_test, rf_predictions, average='weighted', zero_division=1),
-                                  recall_score(y_test, rf_predictions, average='weighted', zero_division=1), f1_score(y_test, rf_predictions, average='weighted', zero_division=1)],
+                                    recall_score(y_test, rf_predictions, average='weighted', zero_division=1), f1_score(y_test, rf_predictions, average='weighted', zero_division=1)],
                 'Gradient Boosting': [accuracy_score(y_test, gb_predictions), precision_score(y_test, gb_predictions, average='weighted', zero_division=1),
-                                      recall_score(y_test, gb_predictions, average='weighted', zero_division=1), f1_score(y_test, gb_predictions, average='weighted', zero_division=1)],
+                                        recall_score(y_test, gb_predictions, average='weighted', zero_division=1), f1_score(y_test, gb_predictions, average='weighted', zero_division=1)],
                 'Decision Tree Classifier': [accuracy_score(y_test, dt_predictions), precision_score(y_test, dt_predictions, average='weighted', zero_division=1),
-                                             recall_score(y_test, dt_predictions, average='weighted', zero_division=1), f1_score(y_test, dt_predictions, average='weighted', zero_division=1)]
+                                            recall_score(y_test, dt_predictions, average='weighted', zero_division=1), f1_score(y_test, dt_predictions, average='weighted', zero_division=1)]
             })
 
             st.table(metrics_df.set_index('Métrica'))
 
+
 if __name__ == '__main__':
     main()
-    

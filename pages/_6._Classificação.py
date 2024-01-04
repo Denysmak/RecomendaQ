@@ -9,6 +9,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px  
+from sklearn.metrics import confusion_matrix
 
 def load_data(dataset_path):
     dados = pd.read_parquet(dataset_path)
@@ -195,7 +196,7 @@ def train_decision_tree(X_train, X_train_scaled, y_train, X_test_scaled, max_dep
 
     return model, predictions
     
-def display_metrics(model_name, y_test, predictions):
+def display_metrics(model_name, y_test, predictions,class_labels):
     accuracy = accuracy_score(y_test, predictions)
     precision = precision_score(y_test, predictions, average='weighted', zero_division=1)
     recall = recall_score(y_test, predictions, average='weighted', zero_division=1)
@@ -207,6 +208,17 @@ def display_metrics(model_name, y_test, predictions):
         'Valor': [accuracy, precision, recall, f1]
     }))
     st.write('\n')
+
+     # Matriz de Confusão
+    st.subheader('Matriz de Confusão:')
+    cm = confusion_matrix(y_test, predictions)
+
+    # Labels
+    labels = [int(label) for label in class_labels]
+
+    # Exibir a matriz de confusão em formato de tabela
+    conf_matrix_df = pd.DataFrame(data=cm, index=labels, columns=labels)
+    st.table(conf_matrix_df)
 
 def main():
     st.title("Classificação com Modelos de Machine Learning")
@@ -241,7 +253,7 @@ def main():
     # Escolhendo as variáveis X
     selected_x = st.multiselect("Escolha as características", available_x)
 
-    # Adicione controles deslizantes para ajustar os hiperparâmetros
+    # Ajuste de HyperParametros
     n_estimators = st.slider("Número de Estimadores (Random Forest e Gradient Boosting)", 10, 500, 200, 10)
     max_depth = st.slider("Profundidade Máxima (Random Forest e Gradient Boosting)", 1, 20, 10, 1)
     min_samples_split = st.slider("Número Mínimo de Amostras para Dividir (Random Forest e Gradient Boosting)", 2, 20, 2, 1)
@@ -260,6 +272,11 @@ def main():
             # Escalonando os dados
             X_train_scaled, X_test_scaled = scale_data(X_train, X_test)
 
+            # Contagem de classes na coluna selecionada
+            class_counts = df[selected_y].astype(int).value_counts()
+            st.subheader("Contagem de Classes na Coluna Selecionada")
+            st.table(class_counts)
+
             # Treinamento do modelo Random Forest
             rf_model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf)
             rf_model.fit(X_train_scaled, y_train)
@@ -268,7 +285,7 @@ def main():
             rf_predictions = rf_model.predict(X_test_scaled)
 
             st.subheader("Random Forest")
-            display_metrics('Random Forest', y_test, rf_predictions)
+            display_metrics('Random Forest', y_test, rf_predictions, class_labels=[13.000, 0.000, 16.000, 17.000, 1.000])
 
             # Adiciona o gráfico de feature importance após a tabela de métricas para o Random Forest
             st.subheader("Feature Importance - Random Forest")
@@ -282,7 +299,7 @@ def main():
             gb_predictions = gb_model.predict(X_test_scaled)
 
             st.subheader("Gradient Boosting")
-            display_metrics('Gradient Boosting', y_test, gb_predictions)
+            display_metrics('Gradient Boosting', y_test, gb_predictions, class_labels=[13.000, 0.000, 16.000, 17.000, 1.000])
 
             # Adiciona o gráfico de feature importance após a tabela de métricas para o Gradient Boosting
             st.subheader("Feature Importance - Gradient Boosting")
@@ -296,7 +313,7 @@ def main():
             dt_predictions = dt_model.predict(X_test_scaled)
 
             st.subheader("Decision Tree Classifier")
-            display_metrics('Decision Tree Classifier', y_test, dt_predictions)
+            display_metrics('Decision Tree Classifier', y_test, dt_predictions, class_labels=[13.000, 0.000, 16.000, 17.000, 1.000])
 
             # Adiciona o gráfico de feature importance após a tabela de métricas para o Decision Tree Classifier
             st.subheader("Feature Importance - Decision Tree Classifier")

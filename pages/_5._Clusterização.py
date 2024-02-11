@@ -9,7 +9,7 @@ from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.cluster import DBSCAN
-
+from datetime import datetime
 
 dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
@@ -17,10 +17,21 @@ df = pd.read_parquet(dataset)
 df['Price'] = df['Price'].str.replace('Free', '0.00')
 df['Price'] = df['Price'].str.replace('$', '').astype(float)
 
+def adjust_price_for_inflation(original_price, original_year, current_year=None, inflation_rate=0.034):
+    if current_year is None:
+        current_year = datetime.now().year
+    years_passed = current_year - original_year
+    inflation_multiplier = (1 + inflation_rate) ** years_passed
+    adjusted_price = original_price * inflation_multiplier
+    return adjusted_price
+
 # Limpeza da coluna 'active_years' para obter os anos de início e término das séries
 df['start_year'] = df['active_years'].str.extract(r'(\d{4})').astype(float)
 df['start_year'].fillna(np.nan, inplace=True)
 df.loc[df['start_year'] < 1800, 'start_year'] = np.nan
+
+# Ajuste de preços para inflação
+df['Price'] = df.apply(lambda row: adjust_price_for_inflation(row['Price'], row['start_year']), axis=1)
 
 # Tratando as inconsistências na coluna de Rating
 df['Rating'] = df['Rating'].str.lower().str.replace('rated', '').str.strip()
@@ -49,12 +60,12 @@ df.loc[df['Rating'] == 'não classificados', 'Rating'] = np.nan
 
 color_scale = ['#00ccff','#cc00ff','#ffcc00','#0066bb','#6600bb','#bb0066','#bb6600','#ff0066','#66ff66','#ee0503']
 n_clusters = 3
-clustering_cols_opts = ['Price','Rating','writer','start_year','Format']
+clustering_cols_opts = ['Price','Rating','start_year','Format']
 clustering_cols = clustering_cols_opts.copy()
 
 def create_dfs():
-    cols = ['Price','Rating','writer','start_year','Format']
-    df_raw = create_df_raw(cols)
+    clustering_cols_opts = ['Price','Rating','start_year','Format']
+    df_raw = create_df_raw(clustering_cols_opts)
     df_clean = df_raw.dropna()
     df_clusters = create_df_clusters(df)
     return {
@@ -107,12 +118,10 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
     expander.dataframe(df_cluster_desc)
     cols = expander.columns(len(clustering_cols))
 
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
-                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                 '#3EB665', '#72D1CD', '#D42156', '#672403']
+    custom_colors = ['#00ccff','#cc00ff','#ffcc00','#0066bb','#6600bb','#bb0066','#bb6600','#ff0066','#66ff66','#ee0503']
 
     # Mapeamento de rótulos de cluster para cores específicas
-    cluster_labels = df[cluster_col].unique()
+    cluster_labels = sorted(df[cluster_col].unique())  # Garante que os clusters estejam em ordem crescente
     num_clusters = len(cluster_labels)
     custom_colors_cluster = custom_colors[:num_clusters]
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
@@ -123,13 +132,15 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
     # Adicionando o trace para cada cluster com uma cor específica
     fig = go.Figure()
     for label, color in cluster_colors.items():
+        if color == '#FFFFFF' or color == '#000000':  # Se a cor for branca ou preta, use uma cor alternativa
+            color = '#FF5733'  # Cor alternativa
         cluster_data = df[df[cluster_col] == label]
         fig.add_trace(go.Scatter(
             x=cluster_data[clustering_cols[0]],
             y=cluster_data[clustering_cols[1]],
             mode='markers',
             marker=dict(color=color),
-            name=f'Cluster {label}'
+            name=f'Cluster {label + 1}'  # Inicia a numeração dos clusters a partir de 1
         ))
 
     fig.update_layout(
@@ -140,6 +151,7 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
 
     for cidx, _ in enumerate(clustering_cols):
         cols[cidx].plotly_chart(fig, use_container_width=True)
+
 
 
 def build_header():
@@ -174,10 +186,11 @@ def build_body_dbscan(key):
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
 
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
-                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                 '#3EB665', '#72D1CD', '#D42156', '#672403']
-    
+    # Lista de cores personalizadas excluindo branco e preto
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
+                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                     '#3EB665', '#72D1CD', '#D42156', '#672403']
+
     eps_value = c2.slider(f'Valor de Eps (DBSCAN) {key}', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
     min_samples_value = st.slider(f'Número Mínimo de Amostras (DBSCAN) {key}', min_value=2, max_value=20, value=5)
 
@@ -187,10 +200,20 @@ def build_body_dbscan(key):
 
     dbscan_marvel = DBSCAN(eps=eps_value, min_samples=min_samples_value)
     dbscan_marvel.fit(selected_columns_imputed)
-    rotulos = dbscan_marvel.labels_
-    selected_columns_imputed['Cluster'] = rotulos
+    labels = dbscan_marvel.labels_
 
-    cluster_labels = np.unique(rotulos)
+    # Atribuir rótulos começando de 1 e garantir que sejam contínuos
+    label_counter = 1
+    label_map = {}
+    for label in labels:
+        if label not in label_map:
+            label_map[label] = label_counter
+            label_counter += 1
+    normalized_labels = [label_map[label] for label in labels]
+
+    selected_columns_imputed['Cluster'] = normalized_labels
+
+    cluster_labels = np.unique(normalized_labels)
     num_clusters = len(cluster_labels)
     custom_colors_cluster = custom_colors[:num_clusters]
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
@@ -213,6 +236,7 @@ def build_body_dbscan(key):
     )
 
     st.plotly_chart(fig)
+
 
 
 def build_page():

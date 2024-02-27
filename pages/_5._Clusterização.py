@@ -107,22 +107,20 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
     expander.dataframe(df_cluster_desc)
     cols = expander.columns(len(clustering_cols))
 
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
-                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                 '#3EB665', '#72D1CD', '#D42156', '#672403']
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
+                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                     '#3EB665', '#72D1CD', '#D42156', '#672403']
 
     # Mapeamento de rótulos de cluster para cores específicas
-    cluster_labels = df[cluster_col].unique()
-    num_clusters = len(cluster_labels)
-    custom_colors_cluster = custom_colors[:num_clusters]
-    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+    cluster_colors = {label: color for label, color in zip(range(n_clusters), custom_colors)}
 
-    # Gerando uma lista de cores fixas para os clusters
-    fixed_colors = [cluster_colors[label] for label in df[cluster_col]]
+    # Gerar a lista ordenada de rótulos de cluster
+    ordered_labels = sorted(cluster_colors.keys())
 
-    # Adicionando o trace para cada cluster com uma cor específica
+    # Adicionando o trace para cada cluster com uma cor específica e ordem de legenda definida
     fig = go.Figure()
-    for label, color in cluster_colors.items():
+    for label in ordered_labels:
+        color = cluster_colors[label]
         cluster_data = df[df[cluster_col] == label]
         fig.add_trace(go.Scatter(
             x=cluster_data[clustering_cols[0]],
@@ -174,7 +172,7 @@ def build_body_dbscan(key):
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
 
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#FFFFFF', '#9E00FF', '#82286B',
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#FFFFFF', '#82286B',
                  '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
                  '#3EB665', '#72D1CD', '#D42156', '#672403']
     

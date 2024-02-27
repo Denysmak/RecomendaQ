@@ -1,11 +1,9 @@
 import pandas as pd
+from sklearn.discriminant_analysis import StandardScaler
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from sklearn.base import TransformerMixin
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.cluster import DBSCAN
@@ -83,11 +81,12 @@ def create_df_clusters(df: pd.DataFrame) -> pd.DataFrame:
     df_clusters = df_clean.copy()
     df_clusters['cluster'] = clusterize(df_clean)
     df_clusters['cluster_standard'] = clusterize(df_clean, StandardScaler())
-    df_clusters['cluster_minmax'] = clusterize(df_clean, MinMaxScaler())
+    df_clusters['cluster_minmax'] = clusterize(df_clean, MinMaxScaler())  # Adicionando a coluna cluster_minmax
     return df_clusters
 
 
-def clusterize(df: pd.DataFrame, scaler:TransformerMixin=None) -> pd.DataFrame:
+
+def clusterize(df: pd.DataFrame, scaler=None) -> pd.DataFrame:
     df_result = df[clustering_cols].copy()
     if scaler is not None:
         df_result = scale(df_result, scaler)
@@ -96,7 +95,7 @@ def clusterize(df: pd.DataFrame, scaler:TransformerMixin=None) -> pd.DataFrame:
     kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=4294967295)
     return kmeans.fit_predict(X)
 
-def scale(df:pd.DataFrame, scaler:TransformerMixin):
+def scale(df:pd.DataFrame, scaler):
     scaling_cols = [x for x in ['idade','tarifa'] if x in clustering_cols]
     for c in scaling_cols:
         vals = df[[c]].values
@@ -113,27 +112,30 @@ def plot_dataframe(df, title, desc):
         c2.dataframe(df.describe())
 
 def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
-    df_cluster_desc = df[[cluster_col]].copy().groupby(by=cluster_col).size()
-    expander = st.expander(cluster_name)
-    expander.dataframe(df_cluster_desc)
-    cols = expander.columns(len(clustering_cols))
+    df_cluster_desc = df.groupby(cluster_col).agg({col: ['mean', 'std'] for col in clustering_cols})
+    df_cluster_desc.columns = [f'{col}_{stat}' for col, stat in df_cluster_desc.columns]  # Renomeando as estatísticas para português
 
-    custom_colors = ['#00ccff','#cc00ff','#ffcc00','#0066bb','#6600bb','#bb0066','#bb6600','#ff0066','#66ff66','#ee0503']
+    # Renomear os clusters para começar de 1
+    df_cluster_desc.index = df_cluster_desc.index + 1
 
-    # Mapeamento de rótulos de cluster para cores específicas
+    # Exibindo média e desvio padrão
+    st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    for col in clustering_cols:
+        with c1 if col == clustering_cols[0] else c2:
+            st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+            st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+
+    # Gerando os gráficos
+    custom_colors = ['#00ccff', '#cc00ff', '#ffcc00', '#0066bb', '#6600bb', '#bb0066', '#bb6600', '#ff0066', '#66ff66', '#ee0503']
     cluster_labels = sorted(df[cluster_col].unique())  # Garante que os clusters estejam em ordem crescente
     num_clusters = len(cluster_labels)
     custom_colors_cluster = custom_colors[:num_clusters]
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
-
-    # Gerando uma lista de cores fixas para os clusters
-    fixed_colors = [cluster_colors[label] for label in df[cluster_col]]
-
-    # Adicionando o trace para cada cluster com uma cor específica
     fig = go.Figure()
     for label, color in cluster_colors.items():
-        if color == '#FFFFFF' or color == '#000000':  # Se a cor for branca ou preta, use uma cor alternativa
-            color = '#FF5733'  # Cor alternativa
+        if color == '#FFFFFF' or color == '#000000':  
+            color = '#FF5733'  
         cluster_data = df[df[cluster_col] == label]
         fig.add_trace(go.Scatter(
             x=cluster_data[clustering_cols[0]],
@@ -142,17 +144,13 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
             marker=dict(color=color),
             name=f'Cluster {label + 1}'  # Inicia a numeração dos clusters a partir de 1
         ))
-
     fig.update_layout(
         xaxis_title=clustering_cols[0],
         yaxis_title=clustering_cols[1],
         showlegend=True
     )
 
-    for cidx, _ in enumerate(clustering_cols):
-        cols[cidx].plotly_chart(fig, use_container_width=True)
-
-
+    st.plotly_chart(fig, use_container_width=True)  
 
 def build_header():
     st.write('<h1>Agrupamento (<i>Clustering</i>) com a base do Marvel_Comics</h1>', unsafe_allow_html=True)
@@ -165,17 +163,25 @@ def build_body_kmeans(key):
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
     n_clusters = c2.slider(f'Quantidade de Clusters (KMeans) {key}', min_value=2, max_value=10, value=3)
+
     dfs = create_dfs()
     for df, title, desc in dfs.values():
         plot_dataframe(df, title, desc)
     df_clusters = dfs['df_clusters'][0]
-    clusters = {
-        'cluster': f'Cluster Sem Normalização (KMeans) {key}',
-        'cluster_standard': f'Cluster Com Normalização Padrão (KMeans) {key}',
-        'cluster_minmax': f'Cluster Com Normalização MinMax (KMeans) {key}',
-    }
-    for col, name in clusters.items():
-        plot_cluster(df_clusters, col, name)
+
+    # Opção para selecionar a clusterização desejada
+    cluster_option = st.selectbox(f'Selecione a opção de clusterização (KMeans) {key}', [
+        'Cluster Sem Normalização',
+        'Cluster Com Normalização Padrão',
+        'Cluster Com Normalização MinMax'
+    ])
+
+    if cluster_option == 'Cluster Sem Normalização':
+        plot_cluster(df_clusters, 'cluster', 'Cluster Sem Normalização (KMeans) kmeans')
+    elif cluster_option == 'Cluster Com Normalização Padrão':
+        plot_cluster(df_clusters, 'cluster_standard', 'Cluster Com Normalização Padrão (KMeans) kmeans')
+    elif cluster_option == 'Cluster Com Normalização MinMax':
+        plot_cluster(df_clusters, 'cluster_minmax', 'Cluster Com Normalização MinMax (KMeans) kmeans')
 
 
 def build_body_dbscan(key):
@@ -185,11 +191,6 @@ def build_body_dbscan(key):
     if len(clustering_cols) < 2:
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
-
-    # Lista de cores personalizadas excluindo branco e preto
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
-                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                     '#3EB665', '#72D1CD', '#D42156', '#672403']
 
     eps_value = c2.slider(f'Valor de Eps (DBSCAN) {key}', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
     min_samples_value = st.slider(f'Número Mínimo de Amostras (DBSCAN) {key}', min_value=2, max_value=20, value=5)
@@ -212,7 +213,11 @@ def build_body_dbscan(key):
     normalized_labels = [label_map[label] for label in labels]
 
     selected_columns_imputed['Cluster'] = normalized_labels
-
+    
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
+                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                     '#3EB665', '#72D1CD', '#D42156', '#672403']
+    
     cluster_labels = np.unique(normalized_labels)
     num_clusters = len(cluster_labels)
     custom_colors_cluster = custom_colors[:num_clusters]
@@ -235,13 +240,14 @@ def build_body_dbscan(key):
         showlegend=True
     )
 
-    st.plotly_chart(fig)
-
+    with st.expander(f'Clusterização (DBSCAN) {key}'):
+        st.plotly_chart(fig)
 
 
 def build_page():
     build_header()
     build_tabs()
+
 
 def build_tabs():
     tabs = st.tabs(["KMeans", "DBSCAN"])
@@ -249,5 +255,6 @@ def build_tabs():
         build_body_kmeans('kmeans')
     with tabs[1]:
         build_body_dbscan('dbscan')
+
 
 build_page()

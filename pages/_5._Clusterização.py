@@ -1,19 +1,19 @@
 import pandas as pd
-from sklearn.discriminant_analysis import StandardScaler
+import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import MinMaxScaler
-import numpy as np
 from sklearn.impute import SimpleImputer
-from sklearn.cluster import DBSCAN
 from datetime import datetime
+from sklearn.decomposition import PCA
 
+# Carregando o conjunto de dados
 dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
 
-df['Price'] = df['Price'].str.replace('Free', '0.00')
-df['Price'] = df['Price'].str.replace('$', '').astype(float)
+# Limpeza e pré-processamento dos dados
+df['Price'] = df['Price'].str.replace('Free', '0.00').str.replace('$', '').astype(float)
 
 def adjust_price_for_inflation(original_price, original_year, current_year=None, inflation_rate=0.034):
     if current_year is None:
@@ -23,24 +23,15 @@ def adjust_price_for_inflation(original_price, original_year, current_year=None,
     adjusted_price = original_price * inflation_multiplier
     return adjusted_price
 
-# Limpeza da coluna 'active_years' para obter os anos de início e término das séries
 df['start_year'] = df['active_years'].str.extract(r'(\d{4})').astype(float)
-df['start_year'].fillna(np.nan, inplace=True)
-df.loc[df['start_year'] < 1800, 'start_year'] = np.nan
-
-# Ajuste de preços para inflação
+df['start_year'] = df['start_year'].where(df['start_year'] >= 1800)  # Tratando anos inválidos
 df['Price'] = df.apply(lambda row: adjust_price_for_inflation(row['Price'], row['start_year']), axis=1)
-
-# Tratando as inconsistências na coluna de Rating
 df['Rating'] = df['Rating'].str.lower().str.replace('rated', '').str.strip()
 df['Rating'].replace(['no rating', None], 'não classificados', inplace=True)
 
-# Filtrando as 8 primeiras classificações de idade (ratings)
 top_ratings = df['Rating'].value_counts().index[:8]
-df_filtered = df[df['Rating'].isin(top_ratings)]
-df_filtered_with_unrated = df[df['Rating'].isin(top_ratings)]
+df = df[df['Rating'].isin(top_ratings)]
 
-# Dicionário de mapeamento das classificações
 rating_mapping = {
     't+': 13,
     't': 10,
@@ -51,72 +42,58 @@ rating_mapping = {
     'explicit content': 18
 }
 
-# Substituir os valores na coluna 'Rating' usando o dicionário de mapeamento
-df['Rating'] = df['Rating'].map(rating_mapping)
+format_mapping = {
+        #' Infinite Comic': 0,
+        ' Comic': 1,
+        ' Digest': 2,
+        ' None': 1,
+        ' Digital Comic': 4,
+        ' Trade Paperback': 5,
+        ' Hardcover': 6,
+        ' MAGAZINE': 7,
+        ' Magazine': 7,
+        ' comic': 1,
+        ' DIGITAL COMIC': 4,
+        ' Graphic Novel': 11,
+    }
 
+df['Rating'] = df['Rating'].map(rating_mapping)
 df.loc[df['Rating'] == 'não classificados', 'Rating'] = np.nan
 
-color_scale = ['#00ccff','#cc00ff','#ffcc00','#0066bb','#6600bb','#bb0066','#bb6600','#ff0066','#66ff66','#ee0503']
-n_clusters = 3
-clustering_cols_opts = ['Price','Rating','start_year','Format']
-clustering_cols = clustering_cols_opts.copy()
+df['Format'] = df['Format'].map(format_mapping)
+df['Format'].fillna(-1, inplace=True)
 
-def create_dfs():
-    clustering_cols_opts = ['Price','Rating','start_year','Format']
-    df_raw = create_df_raw(clustering_cols_opts)
-    df_clean = df_raw.dropna()
-    df_clusters = create_df_clusters(df)
-    return {
-        'df_raw': (df_raw, 'Dataframe Original', 'Dataframe original do Titanic, com um subconjunto de colunas utilizados para o agrupamento (clusterização).'),
-        'df_clean': (df_clean, 'Dataframe Sem Nulos', 'Dataframe após a remoção dos registros que possuíam valores nulos nas colunas selecionadas.'),
-        'df_clusters': (df_clusters, 'Clusterização do Dataframe Codificado e com Normalizações', 'Dataframe após a execução de diferentes normalizações'),
-    }
-    
-def create_df_raw(cols):
-    df_raw = df[cols].copy()
-    return df_raw
+# Interface Streamlit
+st.title('Agrupamento (Clustering) com a base do Marvel Comics')
 
-def create_df_clusters(df: pd.DataFrame) -> pd.DataFrame:
-    df_clean = df.dropna() 
-    df_clusters = df_clean.copy()
-    df_clusters['cluster'] = clusterize(df_clean)
-    df_clusters['cluster_standard'] = clusterize(df_clean, StandardScaler())
-    df_clusters['cluster_minmax'] = clusterize(df_clean, MinMaxScaler())  # Adicionando a coluna cluster_minmax
-    return df_clusters
+# Definição das colunas para clustering
+clustering_cols_opts = ['Price', 'Rating', 'start_year', 'Format']
+clustering_cols = st.multiselect('Selecione as colunas para clustering', clustering_cols_opts, default=clustering_cols_opts[:2])
 
+# Seleção do algoritmo de clustering
+algorithm = st.selectbox('Selecione o algoritmo de clustering', ['KMeans', 'DBSCAN'])
 
+# Exibindo média e desvio padrão das colunas por cluster
+if algorithm == 'KMeans':
+    n_clusters = st.slider('Número de Clusters (KMeans)', min_value=2, max_value=10, value=3)
 
-def clusterize(df: pd.DataFrame, scaler=None) -> pd.DataFrame:
-    df_result = df[clustering_cols].copy()
-    if scaler is not None:
-        df_result = scale(df_result, scaler)
-    X = df_result.values
+    # Pré-processamento dos dados
+    df_processed = df[clustering_cols].dropna()
 
-    kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=4294967295)
-    return kmeans.fit_predict(X)
+    # Normalização dos dados
+    scaler = MinMaxScaler()
+    df_scaled = pd.DataFrame(scaler.fit_transform(df_processed), columns=df_processed.columns)
 
-def scale(df:pd.DataFrame, scaler):
-    scaling_cols = [x for x in ['idade','tarifa'] if x in clustering_cols]
-    for c in scaling_cols:
-        vals = df[[c]].values
-        df[c] = scaler.fit_transform(vals)
-    return df
+    # Aplicação do algoritmo KMeans
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+    df_scaled['cluster'] = kmeans.fit_predict(df_scaled)
 
-def plot_dataframe(df, title, desc):
-    with st.expander(title):
-        st.write(f'<i>{desc}</i>', unsafe_allow_html=True)
-        c1, _, c2 = st.columns([.5,.05,.45])
-        c1.write('<h3>Dados*</h3>', unsafe_allow_html=True)
-        c1.dataframe(df, use_container_width=True)
-        c2.write('<h3>Descrição</h3>', unsafe_allow_html=True)
-        c2.dataframe(df.describe())
+    # Ajustando os rótulos dos clusters para começar de 1
+    df_scaled['cluster'] += 1
 
-def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
-    df_cluster_desc = df.groupby(cluster_col).agg({col: ['mean', 'std'] for col in clustering_cols})
+    # Exibindo média e desvio padrão por cluster
+    df_cluster_desc = df_scaled.groupby('cluster').agg({col: ['mean', 'std'] for col in clustering_cols})
     df_cluster_desc.columns = [f'{col}_{stat}' for col, stat in df_cluster_desc.columns]  # Renomeando as estatísticas para português
-
-    # Renomear os clusters para começar de 1
-    df_cluster_desc.index = df_cluster_desc.index + 1
 
     # Exibindo média e desvio padrão
     st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
@@ -126,151 +103,69 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
             st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
             st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
-    # Gerando os gráficos
-    custom_colors = ['#00ccff', '#cc00ff', '#ffcc00', '#0066bb', '#6600bb', '#bb0066', '#bb6600', '#ff0066', '#66ff66', '#ee0503']
-    cluster_labels = sorted(df[cluster_col].unique())  # Garante que os clusters estejam em ordem crescente
-    num_clusters = len(cluster_labels)
-    custom_colors_cluster = custom_colors[:num_clusters]
-    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+    # Visualização dos clusters em 2D usando PCA
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(df_scaled.drop('cluster', axis=1))
+    df_pca = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
+    df_pca['cluster'] = df_scaled['cluster']
+
+    # Plot dos clusters
     fig = go.Figure()
-    for label, color in cluster_colors.items():
-        if color == '#FFFFFF' or color == '#000000':  # Se a cor for branca ou preta, use uma cor alternativa
-            color = '#FF5733'  # Cor alternativa
-        cluster_data = df[df[cluster_col] == label]
-        fig.add_trace(go.Scatter(
-            x=cluster_data[clustering_cols[0]],
-            y=cluster_data[clustering_cols[1]],
-            mode='markers',
-            marker=dict(color=color),
-            name=f'Cluster {label + 1}'  
-        ))
-    fig.update_layout(
-        xaxis_title=clustering_cols[0],
-        yaxis_title=clustering_cols[1],
-        showlegend=True
-    )
+    for cluster in sorted(df_pca['cluster'].unique()):
+        df_cluster = df_pca[df_pca['cluster'] == cluster]
+        fig.add_trace(go.Scatter(x=df_cluster['PC1'], y=df_cluster['PC2'], mode='markers', name=f'Cluster {cluster}'))
 
-    st.plotly_chart(fig, use_container_width=True)   
+    fig.update_layout(title='Clusters Visualizados em 2D (KMeans)',
+                      xaxis_title='PC1', yaxis_title='PC2')
+    st.plotly_chart(fig)
 
-def build_header():
-    st.write('<h1>Agrupamento (<i>Clustering</i>) com a base do Marvel_Comics</h1>', unsafe_allow_html=True)
+elif algorithm == 'DBSCAN':
+    eps = st.slider('Valor de Eps (DBSCAN)', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
+    min_samples = st.slider('Número Mínimo de Amostras (DBSCAN)', min_value=2, max_value=20, value=5)
 
-def build_body_kmeans(key):
-    global n_clusters, clustering_cols
-    c1, c2 = st.columns(2)
-    clustering_cols = c1.multiselect(f'Colunas - KMeans {key}', options=clustering_cols_opts, default=clustering_cols_opts[0:2])
-    if len(clustering_cols) < 2:
-        st.error('É preciso selecionar pelo menos 2 colunas.')
-        return
-    n_clusters = c2.slider(f'Quantidade de Clusters (KMeans) {key}', min_value=2, max_value=10, value=3)
+    # Pré-processamento dos dados
+    df_processed = df[clustering_cols].dropna()
 
-    dfs = create_dfs()
-    for df, title, desc in dfs.values():
-        plot_dataframe(df, title, desc)
-    df_clusters = dfs['df_clusters'][0]
-
-    # Opção para selecionar a clusterização desejada
-    cluster_option = st.selectbox(f'Selecione a opção de clusterização (KMeans) {key}', [
-        'Cluster Sem Normalização',
-        'Cluster Com Normalização Padrão',
-        'Cluster Com Normalização MinMax'
-    ])
-
-    if cluster_option == 'Cluster Sem Normalização':
-        plot_cluster(df_clusters, 'cluster', 'Cluster Sem Normalização (KMeans) kmeans')
-    elif cluster_option == 'Cluster Com Normalização Padrão':
-        plot_cluster(df_clusters, 'cluster_standard', 'Cluster Com Normalização Padrão (KMeans) kmeans')
-    elif cluster_option == 'Cluster Com Normalização MinMax':
-        plot_cluster(df_clusters, 'cluster_minmax', 'Cluster Com Normalização MinMax (KMeans) kmeans')
-
-
-def build_body_dbscan(key):
-    global clustering_cols
-    c1, c2 = st.columns(2)
-    clustering_cols = c1.multiselect(f'Colunas - DBSCAN {key}', options=clustering_cols_opts, default=clustering_cols_opts[0:2])
-    if len(clustering_cols) < 2:
-        st.error('É preciso selecionar pelo menos 2 colunas.')
-        return
-
-    eps_value = c2.slider(f'Valor de Eps (DBSCAN) {key}', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
-    min_samples_value = st.slider(f'Número Mínimo de Amostras (DBSCAN) {key}', min_value=2, max_value=20, value=5)
-
-    selected_columns = df[clustering_cols]
+    # Normalização dos dados
     imputer = SimpleImputer(strategy='median')
-    selected_columns_imputed = pd.DataFrame(imputer.fit_transform(selected_columns), columns=clustering_cols)
+    df_imputed = pd.DataFrame(imputer.fit_transform(df_processed), columns=df_processed.columns)
 
-    dbscan_marvel = DBSCAN(eps=eps_value, min_samples=min_samples_value)
-    dbscan_marvel.fit(selected_columns_imputed)
-    labels = dbscan_marvel.labels_
+    # Aplicação do algoritmo DBSCAN
+    dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+    df_imputed['cluster'] = dbscan.fit_predict(df_imputed)
 
-    # Atribuir rótulos começando de 1 e garantir que sejam contínuos
-    label_counter = 1
-    label_map = {}
-    for label in labels:
-        if label not in label_map:
-            label_map[label] = label_counter
-            label_counter += 1
-    normalized_labels = [label_map[label] for label in labels]
+    # Ajustando os rótulos dos clusters para começar de 1
+    cluster_labels = np.unique(df_imputed['cluster'])
+    if -1 in cluster_labels:
+        cluster_labels = cluster_labels[cluster_labels != -1]
+        df_imputed['cluster'] = np.where(df_imputed['cluster'] != -1, df_imputed['cluster'] + 2, 1)
+    else:
+        df_imputed['cluster'] += 1
 
-    selected_columns_imputed['Cluster'] = normalized_labels
-    
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
-                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                     '#3EB665', '#72D1CD', '#D42156', '#672403']
-    
-    cluster_labels = np.unique(normalized_labels)
-    num_clusters = len(cluster_labels)
-    custom_colors_cluster = custom_colors[:num_clusters]
-    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+    # Exibindo média e desvio padrão por cluster
+    df_cluster_desc = df_imputed.groupby('cluster').agg({col: ['mean', 'std'] for col in clustering_cols})
+    df_cluster_desc.columns = [f'{col}_{stat}' for col, stat in df_cluster_desc.columns]  # Renomeando as estatísticas para português
 
-    # Calcular média e desvio padrão para cada cluster
-    cluster_means = selected_columns_imputed.groupby('Cluster').mean()
-    cluster_stds = selected_columns_imputed.groupby('Cluster').std()
-
-    st.write("<h2>Estatísticas por Cluster:</h2>", unsafe_allow_html=True)
+    # Exibindo média e desvio padrão
+    st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     for col in clustering_cols:
         with c1 if col == clustering_cols[0] else c2:
-            st.write(f"<h3>Média e Desvio Padrão de {col}:</h3>", unsafe_allow_html=True)
-            cluster_stats = pd.concat([cluster_means[col], cluster_stds[col]], axis=1)
-            cluster_stats.columns = ['Média', 'Desvio Padrão']
-            st.write(cluster_stats.to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+            st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+            st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
+    # Visualização dos clusters em 2D usando PCA
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(df_imputed.drop('cluster', axis=1))
+    df_pca = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
+    df_pca['cluster'] = df_imputed['cluster']
+
+    # Plot dos clusters
     fig = go.Figure()
-    for label, color in cluster_colors.items():
-        cluster_data = selected_columns_imputed[selected_columns_imputed['Cluster'] == label]
-        fig.add_trace(go.Scatter(
-            x=cluster_data[clustering_cols[0]],
-            y=cluster_data[clustering_cols[1]],
-            mode='markers',
-            marker=dict(color=color),
-            name=f'Cluster {label}'
-        ))
+    for cluster in sorted(df_pca['cluster'].unique()):
+        df_cluster = df_pca[df_pca['cluster'] == cluster]
+        fig.add_trace(go.Scatter(x=df_cluster['PC1'], y=df_cluster['PC2'], mode='markers', name=f'Cluster {cluster}'))
 
-    fig.update_layout(
-        xaxis_title=clustering_cols[0],
-        yaxis_title=clustering_cols[1],
-        showlegend=True
-    )
-
-    st.write("<h2>Clusterização (DBSCAN) {key}:</h2>", unsafe_allow_html=True)
+    fig.update_layout(title='Clusters Visualizados em 2D (DBSCAN)',
+                      xaxis_title='PC1', yaxis_title='PC2')
     st.plotly_chart(fig)
-
-
-
-
-
-def build_page():
-    build_header()
-    build_tabs()
-
-
-def build_tabs():
-    tabs = st.tabs(["KMeans", "DBSCAN"])
-    with tabs[0]:
-        build_body_kmeans('kmeans')
-    with tabs[1]:
-        build_body_dbscan('dbscan')
-
-
-build_page()

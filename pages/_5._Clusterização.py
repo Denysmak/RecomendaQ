@@ -134,15 +134,15 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
     fig = go.Figure()
     for label, color in cluster_colors.items():
-        if color == '#FFFFFF' or color == '#000000':  
-            color = '#FF5733'  
+        if color == '#FFFFFF' or color == '#000000':  # Se a cor for branca ou preta, use uma cor alternativa
+            color = '#FF5733'  # Cor alternativa
         cluster_data = df[df[cluster_col] == label]
         fig.add_trace(go.Scatter(
             x=cluster_data[clustering_cols[0]],
             y=cluster_data[clustering_cols[1]],
             mode='markers',
             marker=dict(color=color),
-            name=f'Cluster {label + 1}'  # Inicia a numeração dos clusters a partir de 1
+            name=f'Cluster {label + 1}'  
         ))
     fig.update_layout(
         xaxis_title=clustering_cols[0],
@@ -150,7 +150,7 @@ def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
         showlegend=True
     )
 
-    st.plotly_chart(fig, use_container_width=True)  
+    st.plotly_chart(fig, use_container_width=True)   
 
 def build_header():
     st.write('<h1>Agrupamento (<i>Clustering</i>) com a base do Marvel_Comics</h1>', unsafe_allow_html=True)
@@ -223,6 +223,19 @@ def build_body_dbscan(key):
     custom_colors_cluster = custom_colors[:num_clusters]
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
 
+    # Calcular média e desvio padrão para cada cluster
+    cluster_means = selected_columns_imputed.groupby('Cluster').mean()
+    cluster_stds = selected_columns_imputed.groupby('Cluster').std()
+
+    st.write("<h2>Estatísticas por Cluster:</h2>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    for col in clustering_cols:
+        with c1 if col == clustering_cols[0] else c2:
+            st.write(f"<h3>Média e Desvio Padrão de {col}:</h3>", unsafe_allow_html=True)
+            cluster_stats = pd.concat([cluster_means[col], cluster_stds[col]], axis=1)
+            cluster_stats.columns = ['Média', 'Desvio Padrão']
+            st.write(cluster_stats.to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+
     fig = go.Figure()
     for label, color in cluster_colors.items():
         cluster_data = selected_columns_imputed[selected_columns_imputed['Cluster'] == label]
@@ -240,8 +253,11 @@ def build_body_dbscan(key):
         showlegend=True
     )
 
-    with st.expander(f'Clusterização (DBSCAN) {key}'):
-        st.plotly_chart(fig)
+    st.write("<h2>Clusterização (DBSCAN) {key}:</h2>", unsafe_allow_html=True)
+    st.plotly_chart(fig)
+
+
+
 
 
 def build_page():

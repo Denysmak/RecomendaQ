@@ -24,7 +24,6 @@ st.markdown(f'''
     Participantes do grupo
     <ul>
             <li>Carlos Vinicios</li>
-            <li>Denys Makene</li>
             <li>Leandro dos Santos</li>
             <li>Leon Lourenço</li>
             <li>Vithória Camila</li>

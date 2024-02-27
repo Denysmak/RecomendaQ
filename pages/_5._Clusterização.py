@@ -1,15 +1,13 @@
 import pandas as pd
+from sklearn.discriminant_analysis import StandardScaler
 import streamlit as st
-import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from sklearn.base import TransformerMixin
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.cluster import DBSCAN
-
+from datetime import datetime
 
 dataset = 'data/Marvel_Comics.parquet'
 df = pd.read_parquet(dataset)
@@ -17,10 +15,21 @@ df = pd.read_parquet(dataset)
 df['Price'] = df['Price'].str.replace('Free', '0.00')
 df['Price'] = df['Price'].str.replace('$', '').astype(float)
 
+def adjust_price_for_inflation(original_price, original_year, current_year=None, inflation_rate=0.034):
+    if current_year is None:
+        current_year = datetime.now().year
+    years_passed = current_year - original_year
+    inflation_multiplier = (1 + inflation_rate) ** years_passed
+    adjusted_price = original_price * inflation_multiplier
+    return adjusted_price
+
 # Limpeza da coluna 'active_years' para obter os anos de início e término das séries
 df['start_year'] = df['active_years'].str.extract(r'(\d{4})').astype(float)
 df['start_year'].fillna(np.nan, inplace=True)
 df.loc[df['start_year'] < 1800, 'start_year'] = np.nan
+
+# Ajuste de preços para inflação
+df['Price'] = df.apply(lambda row: adjust_price_for_inflation(row['Price'], row['start_year']), axis=1)
 
 # Tratando as inconsistências na coluna de Rating
 df['Rating'] = df['Rating'].str.lower().str.replace('rated', '').str.strip()
@@ -49,12 +58,12 @@ df.loc[df['Rating'] == 'não classificados', 'Rating'] = np.nan
 
 color_scale = ['#00ccff','#cc00ff','#ffcc00','#0066bb','#6600bb','#bb0066','#bb6600','#ff0066','#66ff66','#ee0503']
 n_clusters = 3
-clustering_cols_opts = ['Price','Rating','writer','start_year','Format']
+clustering_cols_opts = ['Price','Rating','start_year','Format']
 clustering_cols = clustering_cols_opts.copy()
 
 def create_dfs():
-    cols = ['Price','Rating','writer','start_year','Format']
-    df_raw = create_df_raw(cols)
+    clustering_cols_opts = ['Price','Rating','start_year','Format']
+    df_raw = create_df_raw(clustering_cols_opts)
     df_clean = df_raw.dropna()
     df_clusters = create_df_clusters(df)
     return {
@@ -72,11 +81,12 @@ def create_df_clusters(df: pd.DataFrame) -> pd.DataFrame:
     df_clusters = df_clean.copy()
     df_clusters['cluster'] = clusterize(df_clean)
     df_clusters['cluster_standard'] = clusterize(df_clean, StandardScaler())
-    df_clusters['cluster_minmax'] = clusterize(df_clean, MinMaxScaler())
+    df_clusters['cluster_minmax'] = clusterize(df_clean, MinMaxScaler())  # Adicionando a coluna cluster_minmax
     return df_clusters
 
 
-def clusterize(df: pd.DataFrame, scaler:TransformerMixin=None) -> pd.DataFrame:
+
+def clusterize(df: pd.DataFrame, scaler=None) -> pd.DataFrame:
     df_result = df[clustering_cols].copy()
     if scaler is not None:
         df_result = scale(df_result, scaler)
@@ -85,7 +95,7 @@ def clusterize(df: pd.DataFrame, scaler:TransformerMixin=None) -> pd.DataFrame:
     kmeans = KMeans(n_clusters=n_clusters, n_init=10, random_state=4294967295)
     return kmeans.fit_predict(X)
 
-def scale(df:pd.DataFrame, scaler:TransformerMixin):
+def scale(df:pd.DataFrame, scaler):
     scaling_cols = [x for x in ['idade','tarifa'] if x in clustering_cols]
     for c in scaling_cols:
         vals = df[[c]].values
@@ -102,42 +112,45 @@ def plot_dataframe(df, title, desc):
         c2.dataframe(df.describe())
 
 def plot_cluster(df: pd.DataFrame, cluster_col: str, cluster_name: str):
-    df_cluster_desc = df[[cluster_col]].copy().groupby(by=cluster_col).size()
-    expander = st.expander(cluster_name)
-    expander.dataframe(df_cluster_desc)
-    cols = expander.columns(len(clustering_cols))
+    df_cluster_desc = df.groupby(cluster_col).agg({col: ['mean', 'std'] for col in clustering_cols})
+    df_cluster_desc.columns = [f'{col}_{stat}' for col, stat in df_cluster_desc.columns]  # Renomeando as estatísticas para português
 
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
-                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                     '#3EB665', '#72D1CD', '#D42156', '#672403']
+    # Renomear os clusters para começar de 1
+    df_cluster_desc.index = df_cluster_desc.index + 1
 
-    # Mapeamento de rótulos de cluster para cores específicas
-    cluster_colors = {label: color for label, color in zip(range(n_clusters), custom_colors)}
+    # Exibindo média e desvio padrão
+    st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    for col in clustering_cols:
+        with c1 if col == clustering_cols[0] else c2:
+            st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+            st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
-    # Gerar a lista ordenada de rótulos de cluster
-    ordered_labels = sorted(cluster_colors.keys())
-
-    # Adicionando o trace para cada cluster com uma cor específica e ordem de legenda definida
+    # Gerando os gráficos
+    custom_colors = ['#00ccff', '#cc00ff', '#ffcc00', '#0066bb', '#6600bb', '#bb0066', '#bb6600', '#ff0066', '#66ff66', '#ee0503']
+    cluster_labels = sorted(df[cluster_col].unique())  # Garante que os clusters estejam em ordem crescente
+    num_clusters = len(cluster_labels)
+    custom_colors_cluster = custom_colors[:num_clusters]
+    cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
     fig = go.Figure()
-    for label in ordered_labels:
-        color = cluster_colors[label]
+    for label, color in cluster_colors.items():
+        if color == '#FFFFFF' or color == '#000000':  # Se a cor for branca ou preta, use uma cor alternativa
+            color = '#FF5733'  # Cor alternativa
         cluster_data = df[df[cluster_col] == label]
         fig.add_trace(go.Scatter(
             x=cluster_data[clustering_cols[0]],
             y=cluster_data[clustering_cols[1]],
             mode='markers',
             marker=dict(color=color),
-            name=f'Cluster {label}'
+            name=f'Cluster {label + 1}'  
         ))
-
     fig.update_layout(
         xaxis_title=clustering_cols[0],
         yaxis_title=clustering_cols[1],
         showlegend=True
     )
 
-    for cidx, _ in enumerate(clustering_cols):
-        cols[cidx].plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)   
 
 
 def build_header():
@@ -151,17 +164,25 @@ def build_body_kmeans(key):
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
     n_clusters = c2.slider(f'Quantidade de Clusters (KMeans) {key}', min_value=2, max_value=10, value=3)
+
     dfs = create_dfs()
     for df, title, desc in dfs.values():
         plot_dataframe(df, title, desc)
     df_clusters = dfs['df_clusters'][0]
-    clusters = {
-        'cluster': f'Cluster Sem Normalização (KMeans) {key}',
-        'cluster_standard': f'Cluster Com Normalização Padrão (KMeans) {key}',
-        'cluster_minmax': f'Cluster Com Normalização MinMax (KMeans) {key}',
-    }
-    for col, name in clusters.items():
-        plot_cluster(df_clusters, col, name)
+
+    # Opção para selecionar a clusterização desejada
+    cluster_option = st.selectbox(f'Selecione a opção de clusterização (KMeans) {key}', [
+        'Cluster Sem Normalização',
+        'Cluster Com Normalização Padrão',
+        'Cluster Com Normalização MinMax'
+    ])
+
+    if cluster_option == 'Cluster Sem Normalização':
+        plot_cluster(df_clusters, 'cluster', 'Cluster Sem Normalização (KMeans) kmeans')
+    elif cluster_option == 'Cluster Com Normalização Padrão':
+        plot_cluster(df_clusters, 'cluster_standard', 'Cluster Com Normalização Padrão (KMeans) kmeans')
+    elif cluster_option == 'Cluster Com Normalização MinMax':
+        plot_cluster(df_clusters, 'cluster_minmax', 'Cluster Com Normalização MinMax (KMeans) kmeans')
 
 
 def build_body_dbscan(key):
@@ -171,10 +192,6 @@ def build_body_dbscan(key):
     if len(clustering_cols) < 2:
         st.error('É preciso selecionar pelo menos 2 colunas.')
         return
-
-    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#FFFFFF', '#82286B',
-                 '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
-                 '#3EB665', '#72D1CD', '#D42156', '#672403']
     
     eps_value = c2.slider(f'Valor de Eps (DBSCAN) {key}', min_value=0.1, max_value=10.0, value=2.0, step=0.1)
     min_samples_value = st.slider(f'Número Mínimo de Amostras (DBSCAN) {key}', min_value=2, max_value=20, value=5)
@@ -185,13 +202,40 @@ def build_body_dbscan(key):
 
     dbscan_marvel = DBSCAN(eps=eps_value, min_samples=min_samples_value)
     dbscan_marvel.fit(selected_columns_imputed)
-    rotulos = dbscan_marvel.labels_
-    selected_columns_imputed['Cluster'] = rotulos
+    labels = dbscan_marvel.labels_
 
-    cluster_labels = np.unique(rotulos)
+    # Atribuir rótulos começando de 1 e garantir que sejam contínuos
+    label_counter = 1
+    label_map = {}
+    for label in labels:
+        if label not in label_map:
+            label_map[label] = label_counter
+            label_counter += 1
+    normalized_labels = [label_map[label] for label in labels]
+
+    selected_columns_imputed['Cluster'] = normalized_labels
+    
+    custom_colors = ['#0305BF', '#00BF63', '#F13638', '#FA00FF', '#FFDE00', '#9E00FF', '#82286B',
+                     '#398270', '#C6D3BE', '#F63B63', '#B3431A', '#FEF0E8', '#F857C9', '#9C2745', '#A1D807',
+                     '#3EB665', '#72D1CD', '#D42156', '#672403']
+    
+    cluster_labels = np.unique(normalized_labels)
     num_clusters = len(cluster_labels)
     custom_colors_cluster = custom_colors[:num_clusters]
     cluster_colors = {label: color for label, color in zip(cluster_labels, custom_colors_cluster)}
+
+    # Calcular média e desvio padrão para cada cluster
+    cluster_means = selected_columns_imputed.groupby('Cluster').mean()
+    cluster_stds = selected_columns_imputed.groupby('Cluster').std()
+
+    st.write("<h2>Estatísticas por Cluster:</h2>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    for col in clustering_cols:
+        with c1 if col == clustering_cols[0] else c2:
+            st.write(f"<h3>Média e Desvio Padrão de {col}:</h3>", unsafe_allow_html=True)
+            cluster_stats = pd.concat([cluster_means[col], cluster_stds[col]], axis=1)
+            cluster_stats.columns = ['Média', 'Desvio Padrão']
+            st.write(cluster_stats.to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
     fig = go.Figure()
     for label, color in cluster_colors.items():
@@ -210,12 +254,17 @@ def build_body_dbscan(key):
         showlegend=True
     )
 
+    st.write("<h2>Clusterização (DBSCAN) {key}:</h2>", unsafe_allow_html=True)
     st.plotly_chart(fig)
+
+
+
 
 
 def build_page():
     build_header()
     build_tabs()
+
 
 def build_tabs():
     tabs = st.tabs(["KMeans", "DBSCAN"])
@@ -223,5 +272,6 @@ def build_tabs():
         build_body_kmeans('kmeans')
     with tabs[1]:
         build_body_dbscan('dbscan')
+
 
 build_page()

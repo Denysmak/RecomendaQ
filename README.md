@@ -1,7 +1,7 @@
 # RecomendaQs
-por: Carlos Vinicios, Denys Makene, Leandro Cesar, Leon Lourenço, Vithória Camila
+por: Carlos Vinicios, Leandro Cesar, Leon Lourenço, Vithória Camila
 
-{carlos.vinicios, denys.makene, leandro.scesar, leon.santos, vithoria.bastos}@ufrpe.br
+{carlos.vinicios, leandro.scesar, leon.santos, vithoria.bastos}@ufrpe.br
 
 
 

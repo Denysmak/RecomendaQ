@@ -97,11 +97,27 @@ if algorithm == 'KMeans':
 
     # Exibindo média e desvio padrão
     st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    for col in clustering_cols:
-        with c1 if col == clustering_cols[0] else c2:
-            st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
-            st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+    num_cols = len(clustering_cols)
+    if num_cols <= 2:
+        c1, c2 = st.columns(2)
+        for col in clustering_cols:
+            with c1 if col == clustering_cols[0] else c2:
+                st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+                st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        for i, col in enumerate(clustering_cols):
+            if i % 4 == 0:
+                container = c1
+            elif i % 4 == 1:
+                container = c2
+            elif i % 4 == 2:
+                container = c3
+            else:
+                container = c4
+            with container:
+                st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+                st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
     # Visualização dos clusters em 2D usando PCA
     pca = PCA(n_components=2)
@@ -148,11 +164,27 @@ elif algorithm == 'DBSCAN':
 
     # Exibindo média e desvio padrão
     st.write("<h3>Estatísticas por Cluster:</h3>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    for col in clustering_cols:
-        with c1 if col == clustering_cols[0] else c2:
-            st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
-            st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+    num_cols = len(clustering_cols)
+    if num_cols <= 2:
+        c1, c2 = st.columns(2)
+        for col in clustering_cols:
+            with c1 if col == clustering_cols[0] else c2:
+                st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+                st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        for i, col in enumerate(clustering_cols):
+            if i % 4 == 0:
+                container = c1
+            elif i % 4 == 1:
+                container = c2
+            elif i % 4 == 2:
+                container = c3
+            else:
+                container = c4
+            with container:
+                st.write(f"<h4>Média e Desvio Padrão de {col}:</h4>", unsafe_allow_html=True)
+                st.write(df_cluster_desc[f'{col}_mean'].to_frame('Média').join(df_cluster_desc[f'{col}_std'].to_frame('Desvio Padrão')).to_html(index=True, justify='center', classes='dataframe'), unsafe_allow_html=True)
 
     # Visualização dos clusters em 2D usando PCA
     pca = PCA(n_components=2)

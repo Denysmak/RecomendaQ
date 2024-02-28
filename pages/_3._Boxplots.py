@@ -22,6 +22,16 @@ df['start_year'].fillna(np.nan, inplace=True)
 df['Rating'] = df['Rating'].str.lower().str.replace('rated', '').str.strip()
 df['Rating'].replace(['no rating', None], 'não classificados', inplace=True)
 
+rating_mapping = {
+    't+': 13,
+    't': 10,
+    'parental advisory': 15,
+    'all ages': 0,
+    'marvel psr': 15,
+    'a': 9,
+    'explicit content': 18
+}
+
 # Filtrando as 8 primeiras classificações de idade (ratings)
 top_ratings = df['Rating'].value_counts().index[:8]
 df_filtered = df[df['Rating'].isin(top_ratings)]
@@ -29,6 +39,11 @@ df_filtered_with_unrated = df[df['Rating'].isin(top_ratings)]
 
 # Excluindo as não classificadas na versão sem não classificadas
 df_filtered_without_unrated = df[df['Rating'].isin(top_ratings) & (df['Rating'] != 'não classificados')]
+# Remover linhas com valores NaN na coluna 'Price'
+df_filtered = df_filtered.dropna(subset=['Price'])
+# Filtrar o DataFrame para incluir apenas anos a partir de 1930
+df_filtered = df_filtered[df_filtered['start_year'] >= 1930]
+
 
 num_columns = df.select_dtypes(exclude='object').columns
 cat_columns = df.select_dtypes(include='object').columns
@@ -78,3 +93,24 @@ plt.title('Relação entre Preço e Classificação de Idade')
 plt.xlabel('Classificação de Idade (Rating)')
 plt.ylabel('Preço')
 st.pyplot(plt)
+
+# Criando um gráfico de bolha
+st.subheader('Gráfico de Bolha: Preço vs Classificação de Idade')
+bubble_fig = px.scatter(df_filtered, x='Rating', y='Price', size='Price', color='Rating',
+                        title='Gráfico de Bolha: Preço vs Classificação de Idade',
+                        labels={'Rating': 'Classificação de Idade', 'Price': 'Preço'})
+st.plotly_chart(bubble_fig)
+
+# Criar um gráfico de caixa
+st.subheader('Gráfico de Caixa: Distribuição de Preços por Ano de Início da Série')
+boxplot_fig = px.box(df_filtered, x='start_year', y='Price',
+                     title='Gráfico de Caixa: Distribuição de Preços por Ano de Início da Série',
+                     labels={'start_year': 'Ano de Início da Série', 'Price': 'Preço'})
+st.plotly_chart(boxplot_fig)
+
+# Criar um gráfico de violino
+st.subheader('Gráfico de Violino: Distribuição de Preços por Ano de Início da Série')
+violin_fig = px.violin(df_filtered, x='start_year', y='Price', box=True, points="all",
+                       title='Gráfico de Violino: Distribuição de Preços por Ano de Início da Série',
+                       labels={'start_year': 'Ano de Início da Série', 'Price': 'Preço'})
+st.plotly_chart(violin_fig)

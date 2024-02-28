@@ -85,6 +85,17 @@ st.pyplot(plt)
 
 st.write('\n')
 
+# Gráfico de dispersão vendo o preço de acordo com os anos separando os cluster como rating
+st.subheader('Gráfico de dispersão mostrando o preço peço ano de inicío de acordo com a classificação indicativa')
+scatter_fig = px.scatter(df_filtered_without_unrated, x='start_year', y='Price', color='Rating',
+                         title='Relação entre Preço e Ano de Lançamento por Classificação Indicativa',
+                         labels={'start_year': 'Ano de Lançamento', 'Price': 'Preço', 'Rating': 'Classificação Indicativa'})
+scatter_fig.update_layout(title_font_size=20, title_font_family="Arial", title_font_color="black",
+                          xaxis_title_font_size=16, yaxis_title_font_size=16,
+                          xaxis=dict(title='Ano de Lançamento'),
+                          yaxis=dict(title='Preço'))
+st.plotly_chart(scatter_fig)
+
 # Criando um gráfico de dispersão
 st.subheader('Gráfico de Dispersão: Preço vs Classificação de Idade')
 plt.figure(figsize=(10, 6))

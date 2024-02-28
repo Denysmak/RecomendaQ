@@ -8,7 +8,8 @@ from sklearn.preprocessing import StandardScaler
 import streamlit as st
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
-
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import RandomUnderSampler
 
 def load_data(dataset_path):
     dados = pd.read_parquet(dataset_path)
@@ -286,7 +287,15 @@ def split_user_data(df, selected_x, selected_y, user_inputs):
     X_test = user_inputs[selected_x]
     y_test = user_inputs[selected_y]
 
-    return X_train, X_test, y_train, y_test
+    # Utilizando RandomOverSampler para balancear as classes nos dados de treino
+    oversampler = RandomOverSampler(sampling_strategy='auto', random_state=42)
+    X_train_resampled, y_train_resampled = oversampler.fit_resample(X_train, y_train)
+
+    # Utilizando RandomUnderSampler para balancear as classes nos dados de treino
+    undersampler = RandomUnderSampler(sampling_strategy='auto', random_state=42)
+    X_train_resampled, y_train_resampled = undersampler.fit_resample(X_train_resampled, y_train_resampled)
+
+    return X_train_resampled, X_test, y_train_resampled, y_test
 
 def split_data(df, selected_x, selected_y):
     selected_columns = selected_x + [selected_y]
@@ -298,7 +307,15 @@ def split_data(df, selected_x, selected_y):
     X = df[selected_x]
     y = df[selected_y]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Utilizando RandomOverSampler para balancear as classes nos dados de treino
+    oversampler = RandomOverSampler(sampling_strategy='auto', random_state=42)
+    X_resampled, y_resampled = oversampler.fit_resample(X, y)
+
+    # Utilizando RandomUnderSampler para balancear as classes nos dados de treino
+    undersampler = RandomUnderSampler(sampling_strategy='auto', random_state=42)
+    X_resampled, y_resampled = undersampler.fit_resample(X_resampled, y_resampled)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
 
     return X_train, X_test, y_train, y_test
 
@@ -374,17 +391,17 @@ def display_metrics(model_name, y_test, predictions_test, class_labels, inverse_
     st.table(conf_matrix_df)
 
 def display_majority_percentage(y_test, predictions_test, inverse_mapping):
-    # Mapear as previsões de volta para os nomes correspondentes
+    # Mapear as previs천es de volta para os nomes correspondentes
     inverse_predictions = [inverse_mapping.get(label, "Classe Desconhecida") for label in predictions_test]
 
-    # Criar DataFrame com as previsões mapeadas
+    # Criar DataFrame com as previs천es mapeadas
     predictions_df = pd.DataFrame({
         'True Label': y_test,
         'Predicted Label': predictions_test,
         'Mapped Prediction': [inverse_mapping.get(label, 'Classe Desconhecida') if label != -1.0 else 'Valor Especial' for label in predictions_test]
     })
 
-    # Calcular a porcentagem de cada classe nas previsões
+    # Calcular a porcentagem de cada classe nas previs천es
     class_percentages = predictions_df['Mapped Prediction'].value_counts(normalize=True) * 100
 
     # Encontrar a classe com a maior porcentagem
@@ -393,8 +410,7 @@ def display_majority_percentage(y_test, predictions_test, inverse_mapping):
 
     st.subheader('Previsões Mapeadas com Porcentagem da Maioria:')
     st.table(pd.DataFrame({
-        'Classe': class_percentages.index,
-        'Porcentagem': class_percentages.values
+        'Porcentagem': class_percentages.apply(lambda x: '{:.2f}%'.format(x))
     }))
 
 def adjust_price_for_inflation(original_price, original_year, current_year, inflation_rate=0.034):

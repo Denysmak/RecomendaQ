@@ -120,8 +120,8 @@ boxplot_fig = px.box(df_filtered, x='start_year', y='Price',
 st.plotly_chart(boxplot_fig)
 
 # Criar um gráfico de violino
-st.subheader('Gráfico de Violino: Distribuição de Preços por Ano de Início da Série')
-violin_fig = px.violin(df_filtered, x='start_year', y='Price', box=True, points="all",
-                       title='Gráfico de Violino: Distribuição de Preços por Ano de Início da Série',
+st.subheader('Gráfico de Violino: Distribuição de preços por classificação de idade')
+violin_fig = px.violin(df_filtered_without_unrated, x='Rating', y='Price', box=True, points="all",
+                       title='Gráfico de Violino: Distribuição de Preços por classificação de idade',
                        labels={'start_year': 'Ano de Início da Série', 'Price': 'Preço'})
 st.plotly_chart(violin_fig)
